@@ -167,7 +167,7 @@ def pretrain(task_name):
             self.dropout = nn.Dropout(classifier_dropout)
             self.classifier = nn.Linear(128, num_labels)
             self.loss_fn = nn.CrossEntropyLoss() if not is_regression else nn.MSELoss()
-            
+
         def forward(self, input_ids, attention_mask, token_type_ids, labels):
             dis_logits = self.discriminator(
                 input_ids, attention_mask, token_type_ids
@@ -267,5 +267,6 @@ def main():
     for task in training_task:
         pretrain(task)
 
+
 if __name__ == "__main__":
-  main()
+    main()

@@ -1,6 +1,8 @@
+import os
+import wandb
 import torch
 from torch import nn
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from transformers import (
     Trainer,
     ElectraConfig,
@@ -13,7 +15,6 @@ from transformers import (
 from transformers import AdamW
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Union
-from collections.abc import Mapping
 
 SEED = 203
 
@@ -41,19 +42,25 @@ def group_texts(examples):
     return result
 
 
-dataset = load_dataset("openwebtext", cache_dir="/scratch/eaj73/webtext")
 tokenizer = ElectraTokenizerFast.from_pretrained(f"google/electra-small-generator")
 
-dataset = dataset["train"].train_test_split(shuffle=True, test_size=0.1)["test"]
+if os.path.isdir("/scratch/webtext_tokenized"):
+    dataset = load_from_disk(dataset_path="/scratch/webtext_tokenized")
+else:
+    dataset = load_dataset("openwebtext", cache_dir="/scratch/webtext")
+    dataset = dataset["train"].train_test_split(shuffle=True, test_size=0.1)["test"]
 
-dataset = dataset.map(
-    preprocess_function,
-    batched=True,
-    num_proc=8,
-    remove_columns=dataset.column_names,
-)
-print("FINISHED TOKENIZATION")
-dataset = dataset.map(group_texts, batched=True, num_proc=8)
+    dataset = dataset.map(
+        preprocess_function,
+        batched=True,
+        num_proc=8,
+        remove_columns=dataset.column_names,
+    )
+    print("FINISHED TOKENIZATION")
+    dataset = dataset.map(group_texts, batched=True, num_proc=8)
+    # Save the pre processed dataset
+    dataset.save_to_disk(dataset_path="/scratch/webtext_tokenized")
+
 
 # Electra DataCollator
 @dataclass
@@ -86,7 +93,6 @@ class ElectraDataCollator:
         """
         Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
         """
-        import torch
 
         labels = inputs.clone()
         # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
@@ -145,7 +151,15 @@ class ELECTRAModel(nn.Module):
         self.gen_loss_fc = nn.CrossEntropyLoss()
         self.dis_loss_fc = nn.BCEWithLogitsLoss()
 
-    def forward(self, masked_ids, attention_mask, token_type_ids, is_masked, labels):
+    def forward(
+        self,
+        masked_ids,
+        attention_mask,
+        token_type_ids,
+        is_masked,
+        labels,
+        compute_metrics=True,
+    ):
         """input_ids: (Tensor[int]): (batch_size, seq_length)
         masked_ids: masked input ids (Tensor[int]): (B, L)
         attention_mask: attention_mask from data collator (Tensor[int]): (B, L)
@@ -170,23 +184,37 @@ class ELECTRAModel(nn.Module):
             is_replaced[is_masked] = pred_toks != labels[is_masked]  # (B, L)
 
         # Feed into discrminator
-        dis_logits = self.discriminator(
+        disc_logits = self.discriminator(
             gen_ids, attention_mask, token_type_ids
         ).logits  # (B, L, vocab size)
 
         # Loss function of Electra
         gen_loss = self.gen_loss_fc(masked_gen_logits.float(), labels[is_masked])
         # Discriminator Loss
-        dis_logits = dis_logits.masked_select(attention_mask == 1)
-        is_replaced = is_replaced.masked_select(attention_mask == 1)
-        disc_loss = self.dis_loss_fc(dis_logits.float(), is_replaced.float())
+        # disc_logits = disc_logits.masked_select(attention_mask == 1)
+        # is_replaced = is_replaced.masked_select(attention_mask == 1)
+        disc_loss = self.dis_loss_fc(disc_logits.float(), is_replaced.float())
         loss = gen_loss + disc_loss * self.dis_loss_weight
+
+        if compute_metrics:
+            # gen_correct = pred_toks == labels[is_masked]
+            disc_correct = (disc_logits.sigmoid() >= 0) == is_replaced
+            # gen_acc = torch.mean(torch.sum(gen_correct, dim=1) / disc_logits.shape[1])
+            disc_acc = torch.mean(torch.sum(disc_correct, dim=1) / disc_logits.shape[1])
+            wandb.log(
+                {
+                    "disc_loss": disc_loss,
+                    "disc_acc": disc_acc,
+                    "gen_loss": gen_loss,
+                    #    "gen_acc": gen_acc,
+                }
+            )
 
         return {
             "loss": loss,
             "masked_gen_logits": masked_gen_logits,
             "gen_logits": gen_logits,
-            "dis_logits": dis_logits,
+            "disc_logits": disc_logits,
         }
 
 
@@ -208,13 +236,14 @@ training_args = TrainingArguments(
     do_eval=True,
     per_device_train_batch_size=128,
     per_device_eval_batch_size=128,
-    learning_rate=5e-2, # changed from paper
+    learning_rate=5e-2,  # changed from paper
+    lr_scheduler_type="cosine_with_restarts",  # changed from paper "linear"
     logging_dir="./logs",
     report_to="wandb",
     remove_unused_columns=False,
     save_total_limit=2,
-    load_best_model_at_end=True,
-    warmup_steps=625, # changed from paper
+    load_best_model_at_end=False,
+    warmup_steps=625,  # changed from paper
     weight_decay=0.01,
     save_steps=1000,
     adam_epsilon=1e-6,
