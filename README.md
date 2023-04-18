@@ -64,5 +64,5 @@ The loss is around 21 after the warmup steps.
 The Electra model loss is around 22, and still  stops decreasing after warmup steps. \
 [wandB log link for this run is here.](https://wandb.ai/kliang/huggingface/runs/uzzjzir5?workspace=user-kliang)
 
-# Additional Functions
+# Additional Experiments
 To better understand the issue of the non-decreasing loss curve, I implemented the functions calculating the accuracy and loss of the generator and discriminator model. I also plot them in the **Graph 3** above. The logging shows that the generator model is experiencing the same issue of a non-decreasing loss curve after the warmup steps. My analysis is generator model is relatively small compared with the discriminator, which causes it to decrease slowly after a number of steps. I need more experiments to have further validation.
