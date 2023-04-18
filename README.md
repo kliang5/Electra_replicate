@@ -13,6 +13,20 @@ For the dataset, the data used in the paper is not publicly available, so I foll
 
 Finetune code includes using pretrained model with GLUE tasks. The detailed results can be viewed in results_Glue.txt.
 
+### To run the code
+First install all required packages
+```
+pip install -r requirements.txt
+```
+To pretrain the model, run the comand line code like
+```
+python3 training/run_pretrain.py --batch_size 128 --lr 5e-2 --warmup_steps 625 --weight_decay 0.01 --max_steps 62500
+```
+To run the pretrained model on Glue, run the comand line code like
+```
+python3 training/run_finetuning.py
+```
+
 # RESULTS
 pretrain loss: 21.793
 
@@ -33,3 +47,22 @@ Calculating using the same scale of 6.25% trained and fully trained small model 
 In the training, according to the training loss curves logged, the loss stops decreasing after warmup steps. With the research online, I began with the approach of fine-tuning the hyper-parameters. After fine-tuning some hyper-parameters (increasing the learning_rate to `learning_rate=5e-2`, decreasing warmup steps to `warmup_steps=625`) and changing `lr_scheduler_type = "cosine_with_restarts"` from `linear`, but there still exists the same pattern. \
 Other than the paramter tuning, I plot the loss and accuracy of both generator and discriminator model separately. The result of the loss of generator model shows the same pattern as the total_loss, both stop decreasing after the warmup steps. \
 Hope I could learn more for the reason and then I will reimplement the necessary part for future validation.
+
+# Graphs of Training curve
+**Graph 1: [Google released pre-training curves for the small model on OpenWebText](https://github.com/google-research/electra/issues/3)**
+![Small model on OpenWebText, batch_size=128, mask_percent=0.15](Graphs/Electra_graph.png)
+(x-axis is pre-train steps) \
+The loss at the step 62500 should be around 15.
+
+**Graph 2: My pre-training curves for the small model with the same parameters as the paper**
+![My model initial](Graphs/electra_ini.png)
+[wandB log link for this run is here.](https://wandb.ai/kliang/huggingface/runs/bwkg4b2a?workspace=user-kliang)
+The loss is around 21 after the warmup steps.
+
+**Graph 3: My pre-training curves for the small model after fine-tuning the hyper-parameters and changing to the cosine lr_scheduler type.** And adding the generator and discriminator model accuracy.
+![My model after](Graphs/electra_after.png)
+The Electra model loss is around 22, and still  stops decreasing after warmup steps. \
+[wandB log link for this run is here.](https://wandb.ai/kliang/huggingface/runs/uzzjzir5?workspace=user-kliang)
+
+# Additional Functions
+To better understand the issue of the non-decreasing loss curve, I implemented the functions calculating the accuracy and loss of the generator and discriminator model. I also plot them in the **Graph 3** above. The logging shows that the generator model is experiencing the same issue of a non-decreasing loss curve after the warmup steps. My analysis is generator model is relatively small compared with the discriminator, which causes it to decrease slowly after a number of steps. I need more experiments to have further validation.
