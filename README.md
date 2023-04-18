@@ -18,8 +18,8 @@ pretrain loss: 21.793
 
 ## GLUE Avarage Score
 
-|  | CoLA | SST | MRPC | STS  | QQP  | MNLI | QNLI | RTE | SQuAD 1.1 | SQuAD 2.0 | Chunking |
-| --- | --- | --- | --- | ---  | ---  | --- | --- | --- | ---| ---| --- |
+|  | CoLA | SST | MRPC | STS  | QQP  | MNLI | QNLI | RTE |
+| --- | --- | --- | --- | ---  | ---  | --- | --- | --- | 
 | [ELECTRA-Small-OWT](https://github.com/google-research/electra) | 56.8 | 88.3 | 87.4 |  86.8 | 88.3  | 78.9 | 87.9 | 68.5 | -- | -- |  -- |
 | ELECTRA-Small-Replicated | 38.03 | 63.92 | 67.49 |  69.91 | 75.18  | 63.92 | 63.54 | 60.29 | -- | -- |  -- |
 
